@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 3-Kanal Telemetrie</title>
+    <!-- Chart.js für die Live-Diagramme laden -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #121214;
+            color: #e1e1e6;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #ffffff; margin-bottom: 5px; }
+        button {
+            padding: 14px 28px;
+            font-size: 16px;
+            background-color: #04d361;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 20px 0;
+            box-shadow: 0 4px 15px rgba(4, 211, 97, 0.3);
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #06b956; }
+        .chart-container {
+            background-color: #202024;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #status { color: #a8a8b3; font-weight: bold; font-size: 14px; }
+        .value-display {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            background: #202024;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .val-box { font-size: 18px; font-weight: bold; }
+        .val-l { color: #ff4757; }
+        .val-m { color: #2ed573; }
+        .val-r { color: #1e90ff; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>ESP32 Roboter-Telemetrie 🚀</h1>
+        <div id="status">Status: Nicht verbunden</div>
+        <button id="connectBtn" onclick="connectBluetooth()">Mit ESP32 verbinden</button>
+
+        <!-- Live Digital-Anzeige der Sensorwerte oberhalb des Diagramms -->
+        <div class="value-display">
+            <div class="val-box val-l">Links: <span id="lblLinks">0</span></div>
+            <div class="val-box val-m">Mitte: <span id="lblMitte">0</span></div>
+            <div class="val-box val-r">Rechts: <span id="lblRechts">0</span></div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="liveChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let myChart;
+        let bluetoothDevice;
+        let dataCharacteristic;
+
+        // 1. Diagramm mit 3 getrennten Datensätzen initialisieren
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels:, // Zeitstempel auf der X-Achse
+                datasets: [
+                    {
+                        label: 'Sensor Links',
+                        data:,
+                        borderColor: '#ff4757',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Sensor Mitte',
+                        data:,
+                        borderColor: '#2ed573',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Sensor Rechts',
+                        data:,
+                        borderColor: '#1e90ff',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                animation: false, // Deaktiviert für maximale Performance bei schnellen Daten
+                scales: {
+                    x: { grid: { color: '#29292e' }, ticks: { color: '#a8a8b3' } },
+                    y: { grid: { color: '#29292e' }, ticks: { color: '#a8a8b3' }, min: 0, max: 4095 } // Angepasst an ESP32 Analog-Auflösung
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff' } }
+                }
+            }
+        });
+
+        // 2. Bluetooth Verbindung aufbauen
+        async function connectBluetooth() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerText = "Suche nach ESP32_Diagramm_Sender...";
+
+            try {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32_Diagramm_Sender' }],
+                    optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b']
+                });
+
+                statusDiv.innerText = "Verbinde...";
+                const server = await bluetoothDevice.gatt.connect();
+
+                statusDiv.innerText = "Lese Services...";
+                const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
+
+                statusDiv.innerText = "Lese Charakteristik...";
+                dataCharacteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8');
+
+                await dataCharacteristic.startNotifications();
+                dataCharacteristic.addEventListener('characteristicvaluechanged', handleData);
+
+                statusDiv.innerText = "Verbunden! Empfange Daten...";
+                document.getElementById('connectBtn').style.display = 'none';
+
+            } catch (error) {
+                console.log(error);
+                statusDiv.innerText = "Fehler: " + error.message;
+            }
+        }
+
+        // 3. Daten empfangen und sauber trennen (Splitting)
+        function handleData(event) {
+            const value = event.target.value;
+            let decoder = new TextDecoder('utf-8');
+            let stringData = decoder.decode(value); // Kommt an als z.B. "520,1023,410"
+            
+            // Sauber trennen anhand des Kommas
+            let valuesArray = stringData.split(',');
+
+            if (valuesArray.length === 3) {
+                let valLinks = parseFloat(valuesArray[0]);
+                let valMitte = parseFloat(valuesArray[1]);
+                let valRechts = parseFloat(valuesArray[2]);
+
+                // Nur verarbeiten, wenn alle Werte gültige Zahlen sind
+                if (!isNaN(valLinks) && !isNaN(valMitte) && !isNaN(valRechts)) {
+                    
+                    // Digitale Textanzeige oben aktualisieren
+                    document.getElementById('lblLinks').innerText = valLinks;
+                    document.getElementById('lblMitte').innerText = valMitte;
+                    document.getElementById('lblRechts').innerText = valRechts;
+
+                    let now = new Date().toLocaleTimeString();
+
+                    // X-Achse (Zeitstempel) hinzufügen
+                    myChart.data.labels.push(now);
+
+                    // Werte den 3 Linien (Datasets) zuordnen
+                    myChart.data.datasets[0].data.push(valLinks);  // Rote Linie
+                    myChart.data.datasets[1].data.push(valMitte);  // Grüne Linie
+                    myChart.data.datasets[2].data.push(valRechts); // Blaue Linie
+
+                    // Diagramm sauber halten (maximal 30 Punkte im Fenster behalten)
+                    if (myChart.data.labels.length > 30) {
+                        myChart.data.labels.shift();
+                        myChart.data.datasets[0].data.shift();
+                        myChart.data.datasets[1].data.shift();
+                        myChart.data.datasets[2].data.shift();
+                    }
+
+                    // Diagramm neu rendern
+                    myChart.update();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
