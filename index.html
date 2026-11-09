@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 3-Kanal Telemetrie</title>
     <!-- Chart.js für die Live-Diagramme laden -->
-    <script src="https://cdn.jsdelivr.net"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -81,11 +81,11 @@
         myChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels:, // Zeitstempel auf der X-Achse
+                labels: [], // Zeitstempel auf der X-Achse
                 datasets: [
                     {
                         label: 'Sensor Links',
-                        data:,
+                        data: [],
                         borderColor: '#ff4757',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
@@ -94,7 +94,7 @@
                     },
                     {
                         label: 'Sensor Mitte',
-                        data:,
+                        data: [],
                         borderColor: '#2ed573',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
@@ -103,7 +103,7 @@
                     },
                     {
                         label: 'Sensor Rechts',
-                        data:,
+                        data: [],
                         borderColor: '#1e90ff',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
